@@ -1,0 +1,38 @@
+[
+  {
+    "title": "LMS Kampus",
+    "url": "https://lms.example.edu",
+    "emoji": "📚",
+    "description": "Platform e-learning utama"
+  },
+  {
+    "title": "Google Classroom",
+    "url": "https://classroom.google.com",
+    "emoji": "🎓",
+    "description": "Kelas online"
+  },
+  {
+    "title": "Zoom Meeting",
+    "url": "https://zoom.us",
+    "emoji": "💻",
+    "description": "Video conference"
+  },
+  {
+    "title": "Microsoft Teams",
+    "url": "https://teams.microsoft.com",
+    "emoji": "👥",
+    "description": "Kolaborasi tim"
+  },
+  {
+    "title": "Google Drive",
+    "url": "https://drive.google.com",
+    "emoji": "📁",
+    "description": "Penyimpanan file"
+  },
+  {
+    "title": "Quizizz",
+    "url": "https://quizizz.com",
+    "emoji": "🎮",
+    "description": "Kuis interaktif"
+  }
+]
