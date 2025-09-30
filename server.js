@@ -1,79 +1,120 @@
 const express = require('express');
-const fs = require('fs').promises;
-const path = require('path');
+const mongoose = require('mongoose');
 const cors = require('cors');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'links.json');
+const MONGODB_URI = process.env.MONGODB_URI;
+const FRONTEND_URL = process.env.FRONTEND_URL || '*';
+
+// Validate required environment variables
+if (!MONGODB_URI) {
+    console.error('❌ ERROR: MONGODB_URI is not defined in .env file');
+    process.exit(1);
+}
 
 // Middleware
 app.use(cors({
-    origin: '*', // Untuk production, ganti dengan domain frontend kamu
-    methods: ['GET', 'POST', 'DELETE'],
+    origin: FRONTEND_URL,
+    methods: ['GET', 'POST', 'DELETE', 'PUT'],
     credentials: true
 }));
 app.use(express.json());
 
-// Initialize data file if not exists
-async function initDataFile() {
-    try {
-        await fs.access(DATA_FILE);
-        console.log('✅ Data file found');
-    } catch {
-        console.log('📝 Creating new data file...');
-        const defaultData = [
-            {
-                title: "LMS Kampus",
-                url: "https://lms.example.edu",
-                emoji: "📚",
-                description: "Platform e-learning utama"
-            },
-            {
-                title: "Google Classroom",
-                url: "https://classroom.google.com",
-                emoji: "🎓",
-                description: "Kelas online"
-            },
-            {
-                title: "Zoom Meeting",
-                url: "https://zoom.us",
-                emoji: "💻",
-                description: "Video conference"
-            },
-            {
-                title: "Microsoft Teams",
-                url: "https://teams.microsoft.com",
-                emoji: "👥",
-                description: "Kolaborasi tim"
-            },
-            {
-                title: "Google Drive",
-                url: "https://drive.google.com",
-                emoji: "📁",
-                description: "Penyimpanan file"
-            },
-            {
-                title: "Quizizz",
-                url: "https://quizizz.com",
-                emoji: "🎮",
-                description: "Kuis interaktif"
-            }
-        ];
-        await fs.writeFile(DATA_FILE, JSON.stringify(defaultData, null, 2));
-        console.log('✅ Default data created');
+// MongoDB Schema
+const linkSchema = new mongoose.Schema({
+    title: {
+        type: String,
+        required: true
+    },
+    url: {
+        type: String,
+        required: true
+    },
+    emoji: {
+        type: String,
+        default: '🔗'
+    },
+    description: {
+        type: String,
+        default: ''
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
     }
-}
+});
+
+const Link = mongoose.model('Link', linkSchema);
+
+// Connect to MongoDB
+mongoose.connect(MONGODB_URI)
+    .then(async () => {
+        console.log('✅ Connected to MongoDB');
+        
+        // Check if database is empty, if so, seed with default data
+        const count = await Link.countDocuments();
+        if (count === 0) {
+            console.log('📝 Seeding default data...');
+            const defaultLinks = [
+                {
+                    title: "LMS Kampus",
+                    url: "https://lms.example.edu",
+                    emoji: "📚",
+                    description: "Platform e-learning utama"
+                },
+                {
+                    title: "Google Classroom",
+                    url: "https://classroom.google.com",
+                    emoji: "🎓",
+                    description: "Kelas online"
+                },
+                {
+                    title: "Zoom Meeting",
+                    url: "https://zoom.us",
+                    emoji: "💻",
+                    description: "Video conference"
+                },
+                {
+                    title: "Microsoft Teams",
+                    url: "https://teams.microsoft.com",
+                    emoji: "👥",
+                    description: "Kolaborasi tim"
+                },
+                {
+                    title: "Google Drive",
+                    url: "https://drive.google.com",
+                    emoji: "📁",
+                    description: "Penyimpanan file"
+                },
+                {
+                    title: "Quizizz",
+                    url: "https://quizizz.com",
+                    emoji: "🎮",
+                    description: "Kuis interaktif"
+                }
+            ];
+            await Link.insertMany(defaultLinks);
+            console.log('✅ Default data seeded');
+        }
+    })
+    .catch(err => {
+        console.error('❌ MongoDB connection error:', err);
+        process.exit(1);
+    });
 
 // Root endpoint
 app.get('/', (req, res) => {
     res.json({ 
-        message: '🌸 E-Learning Hub API',
-        version: '1.0.0',
+        message: '🌸 E-Learning Hub API with MongoDB',
+        version: '2.0.0',
+        database: 'MongoDB Atlas',
         endpoints: {
             getLinks: 'GET /api/links',
             addLink: 'POST /api/links',
-            deleteLink: 'DELETE /api/links/:index'
+            updateLink: 'PUT /api/links/:id',
+            deleteLink: 'DELETE /api/links/:id'
         }
     });
 });
@@ -81,58 +122,75 @@ app.get('/', (req, res) => {
 // GET all links
 app.get('/api/links', async (req, res) => {
     try {
-        const data = await fs.readFile(DATA_FILE, 'utf8');
-        const links = JSON.parse(data);
+        const links = await Link.find().sort({ createdAt: -1 });
         res.json(links);
     } catch (error) {
-        console.error('Error reading links:', error);
-        res.status(500).json({ error: 'Failed to read links' });
+        console.error('Error fetching links:', error);
+        res.status(500).json({ error: 'Failed to fetch links' });
     }
 });
 
 // POST new link
 app.post('/api/links', async (req, res) => {
     try {
-        const data = await fs.readFile(DATA_FILE, 'utf8');
-        const links = JSON.parse(data);
+        const { title, url, emoji, description } = req.body;
         
         // Validate input
-        if (!req.body.title || !req.body.url) {
+        if (!title || !url) {
             return res.status(400).json({ error: 'Title and URL are required' });
         }
         
-        const newLink = {
-            title: req.body.title,
-            url: req.body.url,
-            emoji: req.body.emoji || '🔗',
-            description: req.body.description || ''
-        };
+        const newLink = new Link({
+            title,
+            url,
+            emoji: emoji || '🔗',
+            description: description || ''
+        });
         
-        links.push(newLink);
-        await fs.writeFile(DATA_FILE, JSON.stringify(links, null, 2));
+        await newLink.save();
         
         console.log('✅ Link added:', newLink.title);
-        res.json({ success: true, link: newLink });
+        res.status(201).json({ success: true, link: newLink });
     } catch (error) {
         console.error('Error adding link:', error);
         res.status(500).json({ error: 'Failed to add link' });
     }
 });
 
-// DELETE link by index
-app.delete('/api/links/:index', async (req, res) => {
+// PUT update link
+app.put('/api/links/:id', async (req, res) => {
     try {
-        const data = await fs.readFile(DATA_FILE, 'utf8');
-        const links = JSON.parse(data);
+        const { id } = req.params;
+        const { title, url, emoji, description } = req.body;
         
-        const index = parseInt(req.params.index);
-        if (isNaN(index) || index < 0 || index >= links.length) {
+        const updatedLink = await Link.findByIdAndUpdate(
+            id,
+            { title, url, emoji, description },
+            { new: true, runValidators: true }
+        );
+        
+        if (!updatedLink) {
             return res.status(404).json({ error: 'Link not found' });
         }
         
-        const deletedLink = links[index];
-        links.splice(index, 1);
-        await fs.writeFile(DATA_FILE, JSON.stringify(links, null, 2));
+        console.log('✅ Link updated:', updatedLink.title);
+        res.json({ success: true, link: updatedLink });
+    } catch (error) {
+        console.error('Error updating link:', error);
+        res.status(500).json({ error: 'Failed to update link' });
+    }
+});
+
+// DELETE link
+app.delete('/api/links/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const deletedLink = await Link.findByIdAndDelete(id);
+        
+        if (!deletedLink) {
+            return res.status(404).json({ error: 'Link not found' });
+        }
         
         console.log('🗑️ Link deleted:', deletedLink.title);
         res.json({ success: true, deleted: deletedLink });
@@ -144,19 +202,26 @@ app.delete('/api/links/:index', async (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    const dbState = mongoose.connection.readyState;
+    const dbStatus = {
+        0: 'disconnected',
+        1: 'connected',
+        2: 'connecting',
+        3: 'disconnecting'
+    };
+    
+    res.json({ 
+        status: 'ok', 
+        database: dbStatus[dbState],
+        timestamp: new Date().toISOString() 
+    });
 });
 
 // Start server
-initDataFile().then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log('🚀 ================================');
-        console.log(`🚀 Server running on port ${PORT}`);
-        console.log(`🚀 Local: http://localhost:${PORT}`);
-        console.log(`📁 Data file: ${DATA_FILE}`);
-        console.log('🚀 ================================');
-    });
-}).catch(error => {
-    console.error('❌ Failed to start server:', error);
-    process.exit(1);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log('🚀 ================================');
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🚀 Local: http://localhost:${PORT}`);
+    console.log(`💾 Database: MongoDB Atlas`);
+    console.log('🚀 ================================');
 });
